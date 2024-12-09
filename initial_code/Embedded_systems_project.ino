@@ -1,11 +1,25 @@
 #include <DHT11.h>
 #include <EEPROM.h>
-const int redLed = 3;       // Pin 2 for red LED
-const int yellowLed = 4;    // Pin 1 for yellow LED
+const int redLed = 3;       // Pin 3 for red LED
+const int yellowLed = 4;    // Pin 4 for yellow LED
 const int buzzer = 2; 
+const int button  = 3;
+
+unsigned char *portDDRB = (unsigned char *) 0x24;  // Data Direction Register B
+unsigned char *portDataB = (unsigned char *) 0x25; // Data Register B
+
+unsigned char *portDDRD = (unsigned char *) 0x2A;  // Data Direction Register D
+unsigned char *portDataD = (unsigned char *) 0x2B; // Data Register D
+unsigned char *pinDataD = (unsigned char *) 0x29;  // Pin Input Register D
 
 const int dhtPin = 7;  // Pin connected to DHT11 data pin
 const int MQ2_PIN=A0;
+
+unsigned long lastDebounceTime = 0;      // Last debounce time
+unsigned long debounceDelay = 50; 
+
+bool buttonState = false;    // Current button state
+bool lastButtonState = false;
 
 unsigned long lastWriteTime = 0;  // Variable to track last write time
 unsigned long lastReadTime = 0;   // Variable to track last read time
@@ -48,16 +62,17 @@ int readSmokeLevel(WeatherData &data) {
 }
 
 void HighTemp(){
-  PORTB |= (1 << redLed);  // Set red LED pin high
-  PORTB &= ~(1 << yellowLed);    // Set yellow LED pin low
-  PORTB |= (1 << buzzer);        // Turn on the buzzer
+  *portDataB|= (1 << redLed);  // Set red LED pin high
+  *portDataB= ~(1 << yellowLed);    // Set yellow LED pin low
+  *portDataD |= (1 << buzzer);        // Turn on the buzzer
+  *portDataD |= (1 << button); 
   Serial.println("Red led on,Buzzer on");
 }
 
 void LowTemp(){
-  PORTB |= (1 << yellowLed);  // Set yellow LED pin high
-  PORTB &= ~(1 << redLed);    // Set red LED pin low
-   PORTB &= ~(1 << buzzer);       // Turn off the buzzer
+  *portDataB |= (1 << yellowLed);  // Set yellow LED pin high
+  *portDataB &= ~(1 << redLed);    // Set red LED pin low
+  *portDataB &= ~(1 << buzzer);       // Turn off the buzzer
   Serial.println("Yellow led on, Buzzer off");
 }
 
@@ -81,15 +96,42 @@ int readSmokeFromEEPROM(int address) {
   return value;
 }
 
+void debounceButton() {
+    static bool currentState = false;
+    static unsigned long lastDebounceTime = 0;
+
+    bool reading = (*pinDataD & (1 << button));  // Read the button state
+    if (reading != lastButtonState) {
+        lastDebounceTime = millis(); // Reset the debounce timer
+    }
+    if ((millis() - lastDebounceTime) > debounceDelay) {
+        if (reading != currentState) {
+            currentState = reading;
+            if (currentState) { // Return true only on button press
+              *portDataB |= (1 << redLed);
+              Serial.println("Button Pressed: Red LED ON");
+            }
+            else {
+                // Turn red LED off when button is released
+                *portDataB &= ~(1 << redLed);
+                Serial.println("Button Released: Red LED OFF");
+            }
+        }
+    }
+    lastButtonState = reading;
+}
+
 
 void setup() {
   Serial.begin(9600);
-  DDRB |= (1 << redLed);     // Set red LED pin as output
-  DDRB |= (1 << yellowLed);  // Set yellow LED pin as output
-  DDRB |= (1 << buzzer);     //Set buzzer as output
+  *portDDRB |= (1 << redLed);     // Set red LED pin as output
+  *portDDRB |= (1 << yellowLed);  // Set yellow LED pin as output
+  *portDDRD |= (1 << buzzer);     //Set buzzer as output
+  *portDataD &= ~(1 << button);
 }
 
 void loop() {
+  debounceButton();
   WeatherData data;
   
   // Get current time (in milliseconds)
