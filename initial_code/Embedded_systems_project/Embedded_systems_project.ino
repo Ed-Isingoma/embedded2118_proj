@@ -1,7 +1,7 @@
 #include <DHT11.h>
 #include <EEPROM.h>
 const int redLed = 3;       // Pin 3 for red LED
-const int yellowLed = 4;    // Pin 4 for yellow LED
+const int greenLed = 4;    // Pin 4 for yellow LED
 const int buzzer = 2; 
 const int button  = 3;
 
@@ -25,6 +25,9 @@ unsigned long lastWriteTime = 0;  // Variable to track last write time
 unsigned long lastReadTime = 0;   // Variable to track last read time
 const long writeInterval = 5000;  // 5 seconds for writing
 const long readInterval = 10000; // 10 seconds for reading
+
+const int maxtemp=26;
+const int maxsmoke=20;
 
 DHT11 dht11(dhtPin);
 
@@ -63,17 +66,17 @@ int readSmokeLevel(WeatherData &data) {
 
 void HighTemp(){
   *portDataB|= (1 << redLed);  // Set red LED pin high
-  *portDataB= ~(1 << yellowLed);    // Set yellow LED pin low
+  *portDataB= ~(1 << greenLed);    // Set green LED pin low
   *portDataD |= (1 << buzzer);        // Turn on the buzzer
   *portDataD |= (1 << button); 
   Serial.println("Red led on,Buzzer on");
 }
 
 void LowTemp(){
-  *portDataB |= (1 << yellowLed);  // Set yellow LED pin high
+  *portDataB |= (1 << greenLed);  // Set green LED pin high
   *portDataB &= ~(1 << redLed);    // Set red LED pin low
   *portDataB &= ~(1 << buzzer);       // Turn off the buzzer
-  Serial.println("Yellow led on, Buzzer off");
+  Serial.println("Green led on, Buzzer off");
 }
 
 //*portDDRB &= ~(1 << 1); // Set Pin 1 as input
@@ -125,7 +128,7 @@ void debounceButton() {
 void setup() {
   Serial.begin(9600);
   *portDDRB |= (1 << redLed);     // Set red LED pin as output
-  *portDDRB |= (1 << yellowLed);  // Set yellow LED pin as output
+  *portDDRB |= (1 << greenLed);  // Set yellow LED pin as output
   *portDDRD |= (1 << buzzer);     //Set buzzer as output
   *portDataD &= ~(1 << button);
 }
@@ -136,7 +139,16 @@ void loop() {
   
   // Get current time (in milliseconds)
   unsigned long currentMillis = millis();
-  
+  int temp =readTempHumidity(data);
+  int smoke=readSmokeLevel(data);
+
+  if(temp >=maxtemp && smoke>=maxsmoke){
+    HighTemp();
+  }
+  else{
+    LowTemp();
+  }
+
   // Write to EEPROM every 5 seconds
   if (currentMillis - lastWriteTime >= writeInterval) {
     lastWriteTime = currentMillis;  // Update the last write time
@@ -164,3 +176,4 @@ void loop() {
   // Add a small delay to avoid flooding the serial monitor
   delay(100);  // You can adjust this delay as needed
 }
+
