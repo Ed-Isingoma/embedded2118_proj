@@ -1,5 +1,20 @@
 #include <DHT11.h>
 #include <EEPROM.h>
+
+#include <Sim800L.h>
+#include <SoftwareSerial.h>
+
+// Define pin connections 
+#define RX 10
+#define TX 11
+//#define RST 12
+
+// Create Sim800L instance
+Sim800L sim800l(RX, TX);
+const char phoneNumber[] = "+256702439337";
+const char message[] = "The temperature and smoke levels are high";
+
+
 const int redLed = 3;       // Pin 3 for red LED
 const int greenLed = 4;    // Pin 4 for yellow LED
 const int buzzer = 2; 
@@ -27,15 +42,21 @@ const long writeInterval = 5000;  // 5 seconds for writing
 const long readInterval = 10000; // 10 seconds for reading
 
 const int maxtemp=26;
-const int maxsmoke=20;
+const int maxsmoke=24;
 
 DHT11 dht11(dhtPin);
+
+volatile bool alertTriggered = false;
+
+// To communicate with the GSM module Arduino
+volatile bool sendCommandToGSM = false;
+
 
 struct WeatherData {
     unsigned int temperature : 6; // 6 bits for temperature 
     unsigned int humidity : 6;    // 6 bits for humidity 
     unsigned int smokeLevel : 6;  // 6  bits for smoke level 
-} ;
+} data;
 
 int readTempHumidity(WeatherData &data){
   int temp, hum;
@@ -63,6 +84,10 @@ int readSmokeLevel(WeatherData &data) {
     Serial.println(data.smokeLevel);
     return data.smokeLevel;
 }
+void ISR_alert() {
+  alertTriggered = true; // Set the flag when the interrupt is triggered
+  sendCommandToGSM = true; // Signal the GSM Arduino
+}
 
 void HighTemp(){
   *portDataB|= (1 << redLed);  // Set red LED pin high
@@ -70,7 +95,12 @@ void HighTemp(){
   *portDataD |= (1 << buzzer);        // Turn on the buzzer
   *portDataD |= (1 << button); 
   Serial.println("Red led on,Buzzer on");
-}
+
+  if (sendCommandToGSM) {
+    Serial.println("Notifying GSM Arduino...");
+    sendCommandToGSM = false; // Reset the flag after notifying
+  }
+
 
 void LowTemp(){
   *portDataB |= (1 << greenLed);  // Set green LED pin high
@@ -131,6 +161,16 @@ void setup() {
   *portDDRB |= (1 << greenLed);  // Set yellow LED pin as output
   *portDDRD |= (1 << buzzer);     //Set buzzer as output
   *portDataD &= ~(1 << button);
+
+   // Configure external interrupt on INT0 (pin 2)
+  EICRA |= (1 << ISC01) | (1 << ISC00); // Trigger on rising edge
+  EIMSK |= (1 << INT0);                 // Enable INT0 interrupt
+
+  sei(); // Enable global interrupts
+  Serial.println("Initializing SIM800L..."); // Initialize the SIM800L
+  sim800l.begin();
+
+  Serial.println("SIM800L initialized.");
 }
 
 void loop() {
@@ -142,12 +182,21 @@ void loop() {
   int temp =readTempHumidity(data);
   int smoke=readSmokeLevel(data);
 
-  if(temp >=maxtemp && smoke>=maxsmoke){
-    HighTemp();
+   // Check if interrupt flag is set
+  if (alertTriggered) {
+    alertTriggered = false; // Reset the flag
+    if (temp >= maxtemp && smoke >= maxsmoke) {
+      HighTemp();
+    }
+  } else {
+    if (temp < maxtemp || smoke < maxsmoke) {
+      LowTemp();
+    }
   }
-  else{
-    LowTemp();
-  }
+
+  delay(100); // Small delay to prevent flooding
+
+
 
   // Write to EEPROM every 5 seconds
   if (currentMillis - lastWriteTime >= writeInterval) {
@@ -155,6 +204,7 @@ void loop() {
     data.temperature = readTempHumidity(data);  // Read temperature
     data.smokeLevel = readSmokeLevel(data);    // Read smoke level
     
+
     // Store data in EEPROM
     writeDataToEEPROM(data);
     Serial.println("Data written to EEPROM");
