@@ -16,7 +16,7 @@ const char message[] = "The temperature and smoke levels are high";
 
 
 const int redLed = 3;       // Pin 3 for red LED
-const int greenLed = 4;    // Pin 4 for yellow LED
+const int greenLed = 4;    // Pin 4 for green LED
 const int buzzer = 2; 
 const int button  = 3;
 
@@ -92,15 +92,19 @@ void ISR_alert() {
 void HighTemp(){
   *portDataB|= (1 << redLed);  // Set red LED pin high
   *portDataB= ~(1 << greenLed);    // Set green LED pin low
-  *portDataD |= (1 << buzzer);        // Turn on the buzzer
-  *portDataD |= (1 << button); 
+  *portDataB |= (1 << buzzer);        // Turn on the buzzer
   Serial.println("Red led on,Buzzer on");
 
   if (sendCommandToGSM) {
     Serial.println("Notifying GSM Arduino...");
+    Serial.println("Calling...");
+    sim800l.callNumber(phoneNumber); // No return value to check
+    Serial.println("Call command sent.");
+    sim800l.sendSms(phoneNumber, message);
+    Serial.println("SMS sent successfully!");
     sendCommandToGSM = false; // Reset the flag after notifying
   }
-
+}
 
 void LowTemp(){
   *portDataB |= (1 << greenLed);  // Set green LED pin high
@@ -109,7 +113,7 @@ void LowTemp(){
   Serial.println("Green led on, Buzzer off");
 }
 
-//*portDDRB &= ~(1 << 1); // Set Pin 1 as input
+
 
 void writeDataToEEPROM(WeatherData &data) {
   EEPROM.put(0, data.temperature);  // Store temperature at address 0
@@ -158,8 +162,9 @@ void debounceButton() {
 void setup() {
   Serial.begin(9600);
   *portDDRB |= (1 << redLed);     // Set red LED pin as output
-  *portDDRB |= (1 << greenLed);  // Set yellow LED pin as output
-  *portDDRD |= (1 << buzzer);     //Set buzzer as output
+  *portDDRB |= (1 << greenLed);  // Set green LED pin as output
+  *portDDRB |= (1 << buzzer);     //Set buzzer as output
+  *portDDRD &= ~(1 << button);
   *portDataD &= ~(1 << button);
 
    // Configure external interrupt on INT0 (pin 2)
