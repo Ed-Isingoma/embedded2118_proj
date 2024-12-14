@@ -100,6 +100,7 @@ void HighTemp(){
     Serial.println("Calling...");
     sim800l.callNumber(phoneNumber); // No return value to check
     Serial.println("Call command sent.");
+    delay(5000);
     sim800l.sendSms(phoneNumber, message);
     Serial.println("SMS sent successfully!");
     sendCommandToGSM = false; // Reset the flag after notifying
